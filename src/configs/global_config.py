@@ -1,8 +1,11 @@
 import os
 import random
+from dataclasses import dataclass
+from pathlib import Path
+
 import numpy as np
 import torch
-from dataclasses import dataclass
+
 
 
 
@@ -21,6 +24,12 @@ class GLOBAL_CONFIG:
     NUM_WORKERS: int = 4
 
     PROJECT_NAME: str = "representation-learning-label-efficiency"
+
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    DATA_DIR = PROJECT_ROOT / "data"
+    RAW_DATA_DIR = DATA_DIR / "raw"
+    PROCESSED_DATA_DIR = DATA_DIR / "processed"
+
 
 def set_seed(seed: int, deterministic: bool = True):
     random.seed(seed)
