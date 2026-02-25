@@ -5,8 +5,6 @@ from src.data_handling.datasets import STL10Dataset
 from src.configs.global_config import GLOBAL_CONFIG
 
 from torchvision import transforms
-import matplotlib.pyplot as plt
-import numpy as np
 
 
 class TestSTL10Dataset(unittest.TestCase):
