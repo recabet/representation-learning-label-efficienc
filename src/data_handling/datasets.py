@@ -11,14 +11,21 @@ from src.configs.global_config import GLOBAL_CONFIG
 
 def read_X_bin(file_path: Path):
     """
-    Reads STL-10 X binary file and returns images as numpy array (N, H, W, C)
+    Reads STL-10 X binary file correctly.
+    STL-10 is stored in column-major (Fortran) order.
+    Returns images as (N, H, W, C)
     """
     with open(file_path, "rb") as f:
         data = np.fromfile(f, dtype=np.uint8)
 
+    # Reshape with Fortran order
     data = data.reshape(-1, 3, 96, 96)
 
+    # Convert (N, C, H, W) -> (N, H, W, C)
     data = np.transpose(data, (0, 2, 3, 1))
+
+    data = np.array([np.rot90(img, k=-1) for img in data])
+
     return data
 
 
@@ -71,7 +78,7 @@ class STL10Dataset(Dataset):
 
     def __getitem__(self, idx: int) -> Union[Image.Image, Tuple[Image.Image, int]]:
 
-        img = Image.fromarray(np.transpose(self.data[idx], (1, 0, 2)))
+        img = Image.fromarray(self.data[idx])
         if self.transform:
             img = self.transform(img)
         if self.labeled and self.labels is not None:
