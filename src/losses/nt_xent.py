@@ -9,7 +9,7 @@ class NTXentLoss(InfoNCE):
 
     - Cosine similarity
     - L2 normalization
-    - Symmetric loss (2 directions)
+    - Full 2N-sample formulation (symmetric by construction)
     """
 
     def __init__(self, temperature: float = 0.5):
@@ -23,9 +23,4 @@ class NTXentLoss(InfoNCE):
 
     def forward(self, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
         self.similarity = self._cosine_similarity
-
-        # Symmetric InfoNCE
-        loss_12 = super().forward(z1, z2)
-        loss_21 = super().forward(z2, z1)
-
-        return (loss_12 + loss_21) / 2
+        return super().forward(z1, z2)
