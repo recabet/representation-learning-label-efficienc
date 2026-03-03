@@ -6,3 +6,6 @@ torchsummary
 torchviz
 seaborn
 scikit-learn
+gradio
+plotly
+pandas

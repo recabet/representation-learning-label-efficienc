@@ -58,7 +58,7 @@ train_loader = DataLoader(train_dataset,
 model = SimCLR(base_model="resnet18", out_dim=128, pretrained=False).to(GLOBAL_CONFIG.DEVICE)
 
 
-criterion = NTXentLoss(temperature=0.5)
+criterion = NTXentLoss(temperature=SIMCLR_CONFIG.TEMPERATURE)
 optimizer = torch.optim.Adam(model.parameters(), lr=SIMCLR_CONFIG.LEARNING_RATE)
 
 # Cosine annealing scheduler with linear warmup
@@ -75,6 +75,36 @@ lr_scheduler = torch.optim.lr_scheduler.SequentialLR(
 
 
 if __name__ == "__main__":
+    import socket
+    import threading
+    from src.analysis.loss_dashboard import create_dashboard
+
+    def _port_free(port: int) -> bool:
+        """Return True if the port is available."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return True
+            except OSError:
+                return False
+
+    DASH_PORT = 7860
+    if _port_free(DASH_PORT):
+        dashboard = create_dashboard(
+            checkpoints_root=GLOBAL_CONFIG.SAVE_DIR,
+            refresh_interval=10,
+        )
+        dash_thread = threading.Thread(
+            target=lambda: dashboard.launch(
+                server_port=DASH_PORT, share=True, quiet=True
+            ),
+            daemon=True,
+        )
+        dash_thread.start()
+        print(f"📉 Loss dashboard launched at http://localhost:{DASH_PORT}  (+ public Gradio link above)")
+    else:
+        print(f"📉 Dashboard already running at http://localhost:{DASH_PORT} — skipping.")
+
     fit(model,
         train_loader,
         criterion,
