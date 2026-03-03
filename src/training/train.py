@@ -1,7 +1,41 @@
 from tqdm import tqdm
 from pathlib import Path
+import csv
+import time
+import os
 
 import torch
+
+# Cross-platform file locking
+if os.name == "nt":
+    import msvcrt
+    def _lock(f):   msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+    def _unlock(f): msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+    def _lock(f):   fcntl.flock(f, fcntl.LOCK_EX)
+    def _unlock(f): fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def _append_loss_csv(csv_path: Path, epoch: int, loss: float, lr: float):
+    """Append one row to the loss log CSV (creates header if file is new).
+    Uses a file lock so parallel processes writing to the same CSV don't corrupt it."""
+    lock_path = csv_path.with_suffix(".csv.lock")
+    write_header = not csv_path.exists()
+
+    with open(lock_path, "w") as lock_f:
+        _lock(lock_f)
+        try:
+            # Re-check after acquiring lock (another process may have created it)
+            if write_header and csv_path.exists():
+                write_header = False
+            with open(csv_path, "a", newline="") as f:
+                writer = csv.writer(f)
+                if write_header:
+                    writer.writerow(["epoch", "loss", "lr", "timestamp"])
+                writer.writerow([epoch, f"{loss:.6f}", f"{lr:.8f}", time.time()])
+        finally:
+            _unlock(lock_f)
 
 
 def fit_one_epoch(model,
@@ -36,14 +70,25 @@ def fit(model,
         optimizer,
         device,
         epochs: int = 100,
-        checkpoint_dir: str = "checkpoints"):
+        checkpoint_dir: str = "checkpoints",
+        scheduler=None):
 
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
+    loss_csv = checkpoint_dir / "loss_log.csv"
+
     for epoch in range(1, epochs + 1):
         avg_loss = fit_one_epoch(model, criterion, optimizer, train_loader, device)
-        print(f"[Epoch {epoch}/{epochs}] Loss: {avg_loss:.4f}")
+
+        current_lr = optimizer.param_groups[0]['lr']
+        print(f"[Epoch {epoch}/{epochs}] Loss: {avg_loss:.4f}  LR: {current_lr:.6f}")
+
+        # Log loss to CSV for live dashboard
+        _append_loss_csv(loss_csv, epoch, avg_loss, current_lr)
+
+        if scheduler is not None:
+            scheduler.step()
 
         # Save checkpoint every 10 epochs
         if epoch % 10 == 0:
