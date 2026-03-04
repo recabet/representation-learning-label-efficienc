@@ -7,11 +7,11 @@ class SIMCLR_CONFIG:
     # -----------------------------
     # Device & Training Settings
     # -----------------------------
-    EPOCHS: int = 100
-    BATCH_SIZE: int = 128
+    EPOCHS: int = 500
+    BATCH_SIZE: int = 256
     NUM_WORKERS: int = 4
-    LEARNING_RATE: float = 1e-3
-    CHECKPOINT_DIR: Path = Path(__file__).resolve().parents[2] / "checkpoints/simclr_pretrain"
+    LEARNING_RATE: float = 0.3
+    CHECKPOINT_DIR: Path = Path(__file__).resolve().parents[2] / "checkpoints/simclr_pretrain_v2"
 
     # -----------------------------
     # Model Settings
@@ -30,14 +30,32 @@ class SIMCLR_CONFIG:
     # SimCLR Augmentations
     # -----------------------------
     SIMCLR_AUGMENTATIONS = transforms.Compose([
-        transforms.RandomResizedCrop(IMAGE_SIZE),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(0.8, 0.8, 0.8, 0.2),
-        transforms.RandomGrayscale(p=0.2),
-        transforms.ToTensor(),
-    ])
+    transforms.RandomResizedCrop(
+        96,
+        scale=(0.2, 1.0),
+    ),
+    transforms.RandomHorizontalFlip(),
+
+    transforms.RandomApply([
+        transforms.ColorJitter(
+            brightness=0.8,
+            contrast=0.8,
+            saturation=0.8,
+            hue=0.2
+        )
+    ], p=0.8),
+
+    transforms.RandomGrayscale(p=0.2),
+
+    transforms.RandomApply(
+        [transforms.GaussianBlur(kernel_size=9)],
+        p=0.5
+    ),
+
+    transforms.ToTensor(),
+])
 
     # -----------------------------
     # NT-Xent Loss
     # -----------------------------
-    TEMPERATURE: float = 0.5
+    TEMPERATURE: float = 0.2

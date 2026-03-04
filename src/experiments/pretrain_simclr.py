@@ -20,15 +20,6 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 
 
-
-simclr_transform = transforms.Compose([
-    transforms.RandomResizedCrop(96),
-    transforms.RandomHorizontalFlip(),
-    transforms.ColorJitter(0.8, 0.8, 0.8, 0.2),
-    transforms.RandomGrayscale(p=0.2),
-    transforms.ToTensor(),
-])
-
 class SimCLRDataset(torch.utils.data.Dataset):
     """
     Wrap STL10Dataset to return two DIFFERENT augmented views for SimCLR.
@@ -36,15 +27,15 @@ class SimCLRDataset(torch.utils.data.Dataset):
     """
     def __init__(self, split="unlabeled"):
         self.dataset = STL10Dataset(split=split, transform=None, labeled=False)
-        self.transform = simclr_transform
+        self.transform = SIMCLR_CONFIG.SIMCLR_AUGMENTATIONS
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
         img = self.dataset[idx]          # PIL Image
-        x1 = self.transform(img)         # first random augmentation
-        x2 = self.transform(img)         # second random augmentation
+        x1 = self.transform(img)         # augmented view
+        x2 = transforms.ToTensor()(img)  # original image as tensor (no augmentation)
         return x1, x2
 
 train_dataset = SimCLRDataset(split="unlabeled")
@@ -56,7 +47,6 @@ train_loader = DataLoader(train_dataset,
 
 
 model = SimCLR(base_model="resnet18", out_dim=128, pretrained=False).to(GLOBAL_CONFIG.DEVICE)
-
 
 criterion = NTXentLoss(temperature=SIMCLR_CONFIG.TEMPERATURE)
 optimizer = torch.optim.Adam(model.parameters(), lr=SIMCLR_CONFIG.LEARNING_RATE)
