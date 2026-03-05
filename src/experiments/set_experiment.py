@@ -2,35 +2,40 @@
 """
 set_experiment.py
 
-Sets up STL-10 experiments with limited labels for semi-supervised learning (SimCLR) and supervised baselines.
-Includes:
-- Data loading with percentage of labeled data
-- Model initialization (scratch / ImageNet / SimCLR)
-- Training loop
-- Evaluation with multiple metrics
+STL-10 Semi-Supervised Experiment:
+- Scratch ResNet18
+- ImageNet ResNet18
+- SimCLR + Linear Probe
+- Metric comparison plots
 """
 
 from pathlib import Path
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, Subset
+from torchvision import transforms, models
+import matplotlib.pyplot as plt
+import seaborn as sns
 
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    confusion_matrix
+)
 
 from src.data_handling.datasets import STL10Dataset
 from src.models.simclr import SimCLR
 from src.models.linear_probe import LinearProbe
-
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix
-import seaborn as sns
-import matplotlib.pyplot as plt
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, Subset
-import torch.nn as nn
-import torch.optim as optim
-from torchvision import transforms, models
+from src.models.probe_wrapper import ProbeWrapper
+from src.training.train import fit_cls
 
 
-# -----------------------------
+# =========================================================
 # Data & Transforms
-# -----------------------------
+# =========================================================
 
 def get_transforms():
     train_transforms = transforms.Compose([
@@ -38,22 +43,22 @@ def get_transforms():
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor()
     ])
+
     test_transforms = transforms.Compose([
         transforms.Resize(96),
         transforms.ToTensor()
     ])
+
     return train_transforms, test_transforms
 
 
 def get_limited_dataset(split="train", percent=10):
-    """
-    Returns a subset of STL-10 labeled data corresponding to the given percentage
-    """
-    train_transforms, test_transforms = get_transforms()
+    train_transforms, _ = get_transforms()
     dataset = STL10Dataset(split=split, labeled=True, transform=train_transforms)
 
     n_total = len(dataset)
     n_selected = max(1, int(n_total * percent / 100))
+
     indices = np.random.choice(n_total, n_selected, replace=False)
     subset = Subset(dataset, indices)
 
@@ -62,52 +67,26 @@ def get_limited_dataset(split="train", percent=10):
 
 def get_test_dataset():
     _, test_transforms = get_transforms()
-    test_dataset = STL10Dataset(split="test", labeled=True, transform=test_transforms)
-    return test_dataset
+    return STL10Dataset(split="test", labeled=True, transform=test_transforms)
 
 
-# -----------------------------
-# Training Loop
-# -----------------------------
-
-def train_model(model, train_loader, val_loader, epochs=20, lr=1e-3, device="cuda"):
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-
-    model.to(device)
-
-    for epoch in range(1, epochs + 1):
-        model.train()
-        running_loss = 0.0
-        for imgs, labels in train_loader:
-            imgs, labels = imgs.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(imgs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item() * imgs.size(0)
-
-        avg_loss = running_loss / len(train_loader.dataset)
-        print(f"Epoch {epoch}/{epochs} - Loss: {avg_loss:.4f}")
-
-    print("Training complete.")
-    return model
-
-
-# -----------------------------
-# Evaluation Metrics
-# -----------------------------
+# =========================================================
+# Evaluation
+# =========================================================
 
 def evaluate_model(model, data_loader, device="cuda"):
     model.eval()
-    all_preds, all_labels = [], []
+    all_preds = []
+    all_labels = []
 
     with torch.no_grad():
         for imgs, labels in data_loader:
-            imgs, labels = imgs.to(device), labels.to(device)
+            imgs = imgs.to(device)
+            labels = labels.to(device)
+
             outputs = model(imgs)
             preds = outputs.argmax(dim=1)
+
             all_preds.append(preds.cpu())
             all_labels.append(labels.cpu())
 
@@ -128,86 +107,199 @@ def evaluate_model(model, data_loader, device="cuda"):
 
 def plot_confusion_matrix(cm, classes, save_path=None):
     plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=classes, yticklabels=classes)
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=classes,
+        yticklabels=classes
+    )
     plt.xlabel("Predicted")
     plt.ylabel("True")
     plt.title("Confusion Matrix")
+
     if save_path:
         plt.savefig(save_path)
+
     plt.close()
 
 
-# -----------------------------
-# Experiment Setup
-# -----------------------------
+# =========================================================
+# Metric Comparison Plots
+# =========================================================
 
-def run_experiment(percent_labels=10,
+def plot_metric_comparison(metrics_scratch,
+                           metrics_imagenet,
+                           metrics_probe,
+                           save_dir="plots"):
+
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True,exist_ok=True)
+
+    model_names = ["Scratch", "ImageNet", "SimCLR Probe"]
+
+    metrics_dict = {
+        "accuracy": [
+            metrics_scratch["accuracy"],
+            metrics_imagenet["accuracy"],
+            metrics_probe["accuracy"]
+        ],
+        "f1_macro": [
+            metrics_scratch["f1_macro"],
+            metrics_imagenet["f1_macro"],
+            metrics_probe["f1_macro"]
+        ],
+        "f1_weighted": [
+            metrics_scratch["f1_weighted"],
+            metrics_imagenet["f1_weighted"],
+            metrics_probe["f1_weighted"]
+        ],
+        "precision_macro": [
+            metrics_scratch["precision_macro"],
+            metrics_imagenet["precision_macro"],
+            metrics_probe["precision_macro"]
+        ],
+        "recall_macro": [
+            metrics_scratch["recall_macro"],
+            metrics_imagenet["recall_macro"],
+            metrics_probe["recall_macro"]
+        ],
+    }
+
+    # Individual metric plots
+    for metric_name, values in metrics_dict.items():
+        plt.figure(figsize=(6, 5))
+        sns.barplot(x=model_names, y=values)
+        plt.title(f"{metric_name.upper()} Comparison")
+        plt.ylim(0, 1)
+        plt.ylabel(metric_name.upper())
+        plt.tight_layout()
+        plt.savefig(save_dir / f"{metric_name}_comparison.png")
+        plt.close()
+
+    # Combined plot
+    plt.figure(figsize=(10, 6))
+
+    x = np.arange(len(model_names))
+    width = 0.15
+
+    for i, (metric_name, values) in enumerate(metrics_dict.items()):
+        plt.bar(x + i * width, values, width, label=metric_name)
+
+    plt.xticks(x + width * 2, model_names)
+    plt.ylim(0, 1)
+    plt.ylabel("Score")
+    plt.title("All Metrics Comparison")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(save_dir / "all_metrics_comparison.png")
+    plt.close()
+
+
+# =========================================================
+# Experiment
+# =========================================================
+
+def run_experiment(experiment_name,
+                   percent_labels=10,
+                   simclr_path="",
                    batch_size=64,
-                   epochs=20,
+                   epochs=100,
                    device="cuda"):
-    """
-    Run experiment with a given percentage of labeled data
-    """
 
-    print(f"\n===== RUNNING EXPERIMENT: {percent_labels}% of labels =====")
+    print(f"\n===== RUNNING EXPERIMENT: {percent_labels}% labels =====")
 
-    train_dataset = get_limited_dataset(split="train", percent=percent_labels)
+    train_dataset = get_limited_dataset("train", percent_labels)
     val_dataset = get_test_dataset()
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                              shuffle=True, num_workers=4)
 
-    print("\n--- Training ResNet18 from scratch ---")
+    val_loader = DataLoader(val_dataset, batch_size=batch_size,
+                            shuffle=False, num_workers=4)
+
+    # -----------------------------------------------------
+    # 1️⃣ Scratch
+    # -----------------------------------------------------
+
+    print("\n--- Training ResNet18 from Scratch ---")
+
     scratch_model = models.resnet18(weights=None)
     scratch_model.fc = nn.Linear(scratch_model.fc.in_features, 10)
-    scratch_model = scratch_model.to(device)
-    train_model(scratch_model, train_loader, val_loader, epochs=epochs, device=device)
-    metrics_scratch = evaluate_model(scratch_model, val_loader, device=device)
-    print("Metrics Scratch:", metrics_scratch)
 
-    print("\n--- Fine-tuning ResNet18 pretrained on ImageNet ---")
-    imagenet_model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+    fit_cls(scratch_model, train_loader,
+            device=device,
+            epochs=epochs,
+            lr=1e-3, checkpoint_dir="checkpoints/scratch/"+experiment_name)
+
+    metrics_scratch = evaluate_model(scratch_model, val_loader, device)
+    print("Scratch Metrics:", metrics_scratch)
+
+    # -----------------------------------------------------
+    # 2️⃣ ImageNet
+    # -----------------------------------------------------
+
+    print("\n--- Fine-tuning ResNet18 (ImageNet) ---")
+
+    imagenet_model = models.resnet18(
+        weights=models.ResNet18_Weights.IMAGENET1K_V1
+    )
     imagenet_model.fc = nn.Linear(imagenet_model.fc.in_features, 10)
-    imagenet_model = imagenet_model.to(device)
-    train_model(imagenet_model, train_loader, val_loader, epochs=epochs, device=device)
-    metrics_imagenet = evaluate_model(imagenet_model, val_loader, device=device)
-    print("Metrics ImageNet:", metrics_imagenet)
 
-    print("\n--- Linear Probe on SimCLR pretrained encoder ---")
-    simclr_model = SimCLR(base_model="resnet18", out_dim=128, pretrained=False)
-    # Load your pretrained SimCLR weights here if available:
-    # simclr_model.load_state_dict(torch.load("simclr_encoder.pth"))
+    fit_cls(imagenet_model, train_loader,
+            device=device, epochs=epochs,
+            lr=1e-4, checkpoint_dir="checkpoints/imagenet/"+experiment_name)
+
+    metrics_imagenet = evaluate_model(imagenet_model, val_loader, device)
+    print("ImageNet Metrics:", metrics_imagenet)
+
+    # -----------------------------------------------------
+    # 3️⃣ SimCLR Linear Probe
+    # -----------------------------------------------------
+
+    print("\n--- Linear Probe on SimCLR Encoder ---")
+
+    simclr_model = SimCLR(base_model="resnet18",
+                          out_dim=128,
+                          pretrained=True)
+
+    simclr_model.load_state_dict(
+        torch.load(simclr_path, map_location=device)
+    )
 
     for param in simclr_model.encoder.parameters():
         param.requires_grad = False
 
-    linear_probe = LinearProbe(feat_dim=512, num_classes=10).to(device)
+    linear_probe = LinearProbe(feat_dim=512, num_classes=10)
+    model_probe = ProbeWrapper(simclr_model.encoder, linear_probe)
 
-    class ProbeWrapper(nn.Module):
-        def __init__(self, encoder, probe):
-            super().__init__()
-            self.encoder = encoder
-            self.probe = probe
+    fit_cls(model_probe, train_loader,
+            device=device, epochs=epochs,
+            lr=1e-3,
+            checkpoint_dir="checkpoints/linear_probe/"+experiment_name)
 
-        def forward(self, x):
-            h, _ = self.encoder(x)
-            return self.probe(h)
+    metrics_probe = evaluate_model(model_probe, val_loader, device)
+    print("Linear Probe Metrics:", metrics_probe)
 
-    model_probe = ProbeWrapper(simclr_model.encoder, linear_probe).to(device)
-    train_model(model_probe, train_loader, val_loader, epochs=epochs, device=device)
-    metrics_probe = evaluate_model(model_probe, val_loader, device=device)
-    print("Metrics Linear Probe:", metrics_probe)
+    # -----------------------------------------------------
+    # Confusion Matrices
+    # -----------------------------------------------------
 
-    classes = ["airplane", "bird", "car", "cat", "deer", "dog", "horse", "monkey", "ship", "truck"]
-    plot_confusion_matrix(metrics_scratch["confusion_matrix"], classes, save_path=Path(f"./cm_scratch.png"))
-    plot_confusion_matrix(metrics_imagenet["confusion_matrix"], classes, save_path=Path(f"./cm_imagenet.png"))
-    plot_confusion_matrix(metrics_probe["confusion_matrix"], classes, save_path=Path(f"./cm_probe.png"))
+    classes = [
+        "airplane", "bird", "car", "cat", "deer",
+        "dog", "horse", "monkey", "ship", "truck"
+    ]
+
+    plot_confusion_matrix(metrics_scratch["confusion_matrix"], classes, Path("cm_scratch.png"))
+    plot_confusion_matrix(metrics_imagenet["confusion_matrix"], classes, Path("cm_imagenet.png"))
+    plot_confusion_matrix(metrics_probe["confusion_matrix"], classes, Path("cm_probe.png"))
+
+
+
+    plot_metric_comparison(metrics_scratch,
+                           metrics_imagenet,
+                           metrics_probe,
+                           save_dir="plots/"+experiment_name)
 
     print("\n===== EXPERIMENT COMPLETE =====")
-
-
-if __name__ == "__main__":
-    run_experiment(percent_labels=10,
-                   batch_size=64,
-                   epochs=10,
-                   device="cuda")
