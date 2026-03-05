@@ -19,7 +19,7 @@ class SimCLR(nn.Module):
 
         # ---- Encoder ----
         if base_model == "resnet18":
-            self.encoder = models.resnet18(weights="imagenet" if pretrained else None)
+            self.encoder = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None)
             feat_dim = self.encoder.fc.in_features
         elif base_model == "resnet50":
             self.encoder = models.resnet50(weights="imagenet" if pretrained else None)
