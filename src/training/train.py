@@ -38,11 +38,11 @@ def _append_loss_csv(csv_path: Path, epoch: int, loss: float, lr: float):
             _unlock(lock_f)
 
 
-def fit_one_epoch(model,
-                  criterion,
-                  optimizer,
-                  data_loader,
-                  device):
+def fit_one_epoch_simclr(model,
+                         criterion,
+                         optimizer,
+                         data_loader,
+                         device):
 
     model.train()
     total_loss = 0
@@ -64,14 +64,49 @@ def fit_one_epoch(model,
     avg_loss = total_loss / len(data_loader)
     return avg_loss
 
-def fit(model,
-        train_loader,
-        criterion,
-        optimizer,
-        device,
-        epochs: int = 100,
-        checkpoint_dir: str = "checkpoints",
-        scheduler=None):
+
+
+def fit_one_epoch_cls(model,
+                      data_loader,
+                      criterion,
+                      optimizer,
+                      device):
+
+    model.train()
+    total_loss = 0
+    correct = 0
+    total = 0
+
+    for imgs, labels in tqdm(data_loader, desc="Training batch"):
+        imgs = imgs.to(device)
+        labels = labels.to(device)
+
+        outputs = model(imgs)
+        loss = criterion(outputs, labels)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+
+        preds = outputs.argmax(dim=1)
+        correct += (preds == labels).sum().item()
+        total += labels.size(0)
+
+    avg_loss = total_loss / len(data_loader)
+    accuracy = correct / total
+
+    return avg_loss, accuracy
+
+def fit_simclr(model,
+               train_loader,
+               criterion,
+               optimizer,
+               device,
+               epochs: int = 100,
+               checkpoint_dir: str = "checkpoints",
+               scheduler=None):
 
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -79,20 +114,65 @@ def fit(model,
     loss_csv = checkpoint_dir / "loss_log.csv"
 
     for epoch in range(1, epochs + 1):
-        avg_loss = fit_one_epoch(model, criterion, optimizer, train_loader, device)
+        avg_loss = fit_one_epoch_simclr(model, criterion, optimizer, train_loader, device)
 
         current_lr = optimizer.param_groups[0]['lr']
         print(f"[Epoch {epoch}/{epochs}] Loss: {avg_loss:.4f}  LR: {current_lr:.6f}")
 
-        # Log loss to CSV for live dashboard
         _append_loss_csv(loss_csv, epoch, avg_loss, current_lr)
 
         if scheduler is not None:
             scheduler.step()
 
-        # Save checkpoint every 10 epochs
         if epoch % 10 == 0:
             ckpt_path = checkpoint_dir / f"simclr_epoch_{epoch}.pth"
             torch.save(model.state_dict(), ckpt_path)
             print(f"Saved checkpoint: {ckpt_path}")
 
+
+def fit_cls(model,
+            train_loader,
+            device,
+            epochs: int = 100,
+            lr: float = 1e-3,
+            checkpoint_dir: str = "checkpoints_cls",
+            scheduler=None):
+
+    model.to(device)
+
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    checkpoint_dir = Path(checkpoint_dir)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    loss_csv = checkpoint_dir / "loss_log.csv"
+
+    for epoch in range(1, epochs + 1):
+
+        avg_loss, acc = fit_one_epoch_cls(
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            device
+        )
+
+        current_lr = optimizer.param_groups[0]['lr']
+
+        print(f"[Epoch {epoch}/{epochs}] "
+              f"Loss: {avg_loss:.4f}  "
+              f"Acc: {acc:.4f}  "
+              f"LR: {current_lr:.6f}")
+
+        _append_loss_csv(loss_csv, epoch, avg_loss, current_lr)
+
+        if scheduler is not None:
+            scheduler.step()
+
+        if epoch % 10 == 0:
+            ckpt_path = checkpoint_dir / f"classifier_epoch_{epoch}.pth"
+            torch.save(model.state_dict(), ckpt_path)
+            print(f"Saved checkpoint: {ckpt_path}")
+
+    return model
