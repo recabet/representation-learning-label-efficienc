@@ -1,34 +1,36 @@
 from src.experiments.set_experiment import run_experiment
+from src.configs.global_config import GLOBAL_CONFIG
 
 if __name__ == "__main__":
-    run_experiment(experiment_name="10",
-                   percent_labels=10,
-                   simclr_path="/home/recabet/representation-learning-label-efficiency/checkpoints/simclr_pretrain/simclr_epoch_500.pth",
-                   batch_size=64,
-                   epochs=100,
-                   device="cuda")
+    # ─────────────────────────────────────────────
+    # SimCLR checkpoint variants: (name, architecture, checkpoint_path, out_dim)
+    # ─────────────────────────────────────────────
+    variants = [
+        ("resnet18",
+         "resnet18",
+         f"{GLOBAL_CONFIG.SAVE_DIR}/simclr_pretrain_resnet18/simclr_epoch_800.pth",
+         128),
+        ("resnet18_pt",
+         "resnet18",
+         f"{GLOBAL_CONFIG.SAVE_DIR}/simclr_pretrain_resnet18_pt/simclr_epoch_800.pth",
+         128),
+        # ("resnet50",
+        #  "resnet50",
+        #  f"{GLOBAL_CONFIG.SAVE_DIR}/simclr_pretrain_resnet50/simclr_epoch_800.pth",
+        #  256),
+    ]
 
-    run_experiment(experiment_name="25",
-                   percent_labels=25,
-                   simclr_path="/home/recabet/representation-learning-label-efficiency/checkpoints/simclr_pretrain/simclr_epoch_500.pth",
-                   batch_size=64,
-                   epochs=100,
-                   device="cuda")
-    run_experiment(experiment_name="50",
-                   percent_labels=50,
-                   simclr_path="/home/recabet/representation-learning-label-efficiency/checkpoints/simclr_pretrain/simclr_epoch_500.pth",
-                   batch_size=64,
-                   epochs=100,
-                   device="cuda")
-    run_experiment(experiment_name="75",
-                   percent_labels=75,
-                   simclr_path="/home/recabet/representation-learning-label-efficiency/checkpoints/simclr_pretrain/simclr_epoch_500.pth",
-                   batch_size=64,
-                   epochs=100,
-                   device="cuda")
-    run_experiment(experiment_name="100",
-                   percent_labels=100,
-                   simclr_path="/home/recabet/representation-learning-label-efficiency/checkpoints/simclr_pretrain/simclr_epoch_500.pth",
-                   batch_size=64,
-                   epochs=100,
-                   device="cuda")
+    label_percents = [10, 25, 50, 75, 100]
+
+    for variant_name, arch, simclr_path, out_dim in variants:
+        for pct in label_percents:
+            run_experiment(
+                experiment_name=f"{variant_name}_{pct}",
+                percent_labels=pct,
+                simclr_path=simclr_path,
+                batch_size=64,
+                epochs=100,
+                device="cuda",
+                base_model=arch,
+                out_dim=out_dim,
+            )
