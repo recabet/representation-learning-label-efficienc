@@ -22,16 +22,20 @@ class SimCLR(nn.Module):
             self.encoder = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None)
             feat_dim = self.encoder.fc.in_features
         elif base_model == "resnet50":
-            self.encoder = models.resnet50(weights="imagenet" if pretrained else None)
+            self.encoder = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1 if pretrained else None)
             feat_dim = self.encoder.fc.in_features
         else:
             raise ValueError(f"Unknown base_model: {base_model}")
 
         self.encoder.fc = nn.Identity()
 
-        # ---- Projection head ----
+        # ---- Projection head (3-layer MLP, SimCLR v2) ----
         self.projector = nn.Sequential(
             nn.Linear(feat_dim, feat_dim),
+            nn.BatchNorm1d(feat_dim),
+            nn.ReLU(),
+            nn.Linear(feat_dim, feat_dim),
+            nn.BatchNorm1d(feat_dim),
             nn.ReLU(),
             nn.Linear(feat_dim, out_dim)
         )
