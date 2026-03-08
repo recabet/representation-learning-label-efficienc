@@ -12,7 +12,7 @@ class NTXentLoss(InfoNCE):
     - Full 2N-sample formulation (symmetric by construction)
     """
 
-    def __init__(self, temperature: float = 0.5):
+    def __init__(self, temperature: float = 0.07):
         super().__init__(temperature=temperature)
 
     @staticmethod

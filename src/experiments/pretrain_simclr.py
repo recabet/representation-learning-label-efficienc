@@ -5,6 +5,13 @@ pretrain_simclr.py
 Pretrain SimCLR on unlabeled STL-10 dataset.
 
 Saves checkpoints every 10 epochs.
+
+Usage:
+  # ResNet18 (default config):
+  python -m src.experiments.pretrain_simclr
+
+  # ResNet50: change BASE_MODEL in simclr_config.py to "resnet50", then:
+  python -m src.experiments.pretrain_simclr
 """
 
 
@@ -16,7 +23,6 @@ from src.configs.simclr_config import SIMCLR_CONFIG
 from src.configs.global_config import GLOBAL_CONFIG
 
 import torch
-from torchvision import transforms
 from torch.utils.data import DataLoader
 
 
@@ -35,34 +41,8 @@ class SimCLRDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         img = self.dataset[idx]
         x1 = self.transform(img)
-        x2 = transforms.ToTensor()(img)
+        x2 = self.transform(img)
         return x1, x2
-
-train_dataset = SimCLRDataset(split="unlabeled")
-
-train_loader = DataLoader(train_dataset,
-                          batch_size=SIMCLR_CONFIG.BATCH_SIZE,
-                          shuffle=True,
-                          num_workers=4,
-                          drop_last=True)
-
-
-model = SimCLR(base_model="resnet18", out_dim=128, pretrained=False).to(GLOBAL_CONFIG.DEVICE)
-
-criterion = NTXentLoss(temperature=SIMCLR_CONFIG.TEMPERATURE)
-optimizer = torch.optim.Adam(model.parameters(), lr=SIMCLR_CONFIG.LEARNING_RATE)
-
-
-warmup_epochs = 10
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    optimizer, T_max=SIMCLR_CONFIG.EPOCHS - warmup_epochs, eta_min=1e-6
-)
-warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-    optimizer, start_factor=0.01, total_iters=warmup_epochs
-)
-lr_scheduler = torch.optim.lr_scheduler.SequentialLR(
-    optimizer, schedulers=[warmup_scheduler, scheduler], milestones=[warmup_epochs]
-)
 
 
 if __name__ == "__main__":
@@ -70,6 +50,39 @@ if __name__ == "__main__":
     import threading
     from src.analysis.loss_dashboard import create_dashboard
 
+    # ── Instantiate config so __post_init__ derives CHECKPOINT_DIR ──
+    cfg = SIMCLR_CONFIG()
+
+    train_dataset = SimCLRDataset(split="unlabeled")
+
+    train_loader = DataLoader(train_dataset,
+                              batch_size=cfg.BATCH_SIZE,
+                              shuffle=True,
+                              num_workers=cfg.NUM_WORKERS,
+                              drop_last=True)
+
+    model = SimCLR(base_model=cfg.BASE_MODEL,
+                   out_dim=cfg.OUT_DIM,
+                   pretrained=cfg.PRETRAINED).to(GLOBAL_CONFIG.DEVICE)
+
+    criterion = NTXentLoss(temperature=cfg.TEMPERATURE)
+    optimizer = torch.optim.SGD(model.parameters(),
+                                lr=cfg.LEARNING_RATE,
+                                momentum=0.9,
+                                weight_decay=cfg.WEIGHT_DECAY)
+
+    warmup_epochs = cfg.WARMUP_EPOCHS
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=cfg.EPOCHS - warmup_epochs, eta_min=1e-6
+    )
+    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=0.01, total_iters=warmup_epochs
+    )
+    lr_scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[warmup_scheduler, scheduler], milestones=[warmup_epochs]
+    )
+
+    # ── Optional: live loss dashboard ──
     def _port_free(port: int) -> bool:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
@@ -95,11 +108,15 @@ if __name__ == "__main__":
     else:
         print(f"📉 Dashboard already running at http://localhost:{DASH_PORT} — skipping.")
 
+    # ── Launch pretraining ──
+    print(f"🚀 Pretraining SimCLR with {cfg.BASE_MODEL} for {cfg.EPOCHS} epochs")
+    print(f"📁 Checkpoints → {cfg.CHECKPOINT_DIR}")
+
     fit_simclr(model,
                train_loader,
                criterion,
                optimizer,
                GLOBAL_CONFIG.DEVICE,
-               epochs=SIMCLR_CONFIG.EPOCHS,
-               checkpoint_dir=str(SIMCLR_CONFIG.CHECKPOINT_DIR),
-               scheduler=lr_scheduler, )
+               epochs=cfg.EPOCHS,
+               checkpoint_dir=str(cfg.CHECKPOINT_DIR),
+               scheduler=lr_scheduler)
