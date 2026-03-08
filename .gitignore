@@ -1,7 +1,23 @@
-data
+# ─── Data ───
+data/
+
+# ─── IDE ───
+.idea/
 *.xml
 *.iml
-.idea
+
+# ─── Python ───
 *.pyc
-__pycache__
-checkpoints
+__pycache__/
+*.egg-info/
+dist/
+build/
+
+# ─── Training artifacts ───
+checkpoints/
+src/experiments/checkpoints/
+src/experiments/plots/
+plots/
+
+# ─── Gradio cache ───
+.gradio/
