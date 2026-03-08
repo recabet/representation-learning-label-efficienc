@@ -11,21 +11,23 @@ class SIMCLR_CONFIG:
     EPOCHS: int = 800                 # ⬆ longer training helps a lot
     BATCH_SIZE: int = 256
     NUM_WORKERS: int = 8              # ⬆ faster data loading
-    LEARNING_RATE: float = 0.5        # ⬆ for SGD (not Adam)
+    LEARNING_RATE: float = 0.3        # linear scaling: 0.3 * batch_size / 256
     WEIGHT_DECAY: float = 1e-4
     WARMUP_EPOCHS: int = 10
 
-    CHECKPOINT_DIR: Path = (
-        Path(__file__).resolve().parents[2]
-        / "checkpoints/simclr_pretrain_v3"
-    )
+    def __post_init__(self):
+        suffix = "_pt" if self.PRETRAINED else ""
+        self.CHECKPOINT_DIR = (
+            Path(__file__).resolve().parents[2]
+            / f"checkpoints/simclr_pretrain_{self.BASE_MODEL}{suffix}"
+        )
 
     # -----------------------------
     # Model Settings
     # -----------------------------
     BASE_MODEL: str = "resnet18"
-    OUT_DIM: int = 128
-    PRETRAINED: bool = False
+    OUT_DIM: int = 256
+    PRETRAINED: bool = True
 
     # -----------------------------
     # Dataset
@@ -71,4 +73,4 @@ class SIMCLR_CONFIG:
     # -----------------------------
     # NT-Xent
     # -----------------------------
-    TEMPERATURE: float = 0.5
+    TEMPERATURE: float = 0.07
