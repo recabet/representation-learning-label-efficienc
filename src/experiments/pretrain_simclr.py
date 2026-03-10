@@ -23,8 +23,13 @@ from src.configs.simclr_config import SIMCLR_CONFIG
 from src.configs.global_config import GLOBAL_CONFIG
 
 import torch
+from torchvision import transforms
 from torch.utils.data import DataLoader
 
+
+# =========================================================
+# SimCLR Dataset (FIXED)
+# =========================================================
 
 class SimCLRDataset(torch.utils.data.Dataset):
     """
@@ -44,6 +49,10 @@ class SimCLRDataset(torch.utils.data.Dataset):
         x2 = self.transform(img)
         return x1, x2
 
+
+# =========================================================
+# DataLoader
+# =========================================================
 
 if __name__ == "__main__":
     import socket
