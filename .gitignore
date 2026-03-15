@@ -14,10 +14,7 @@ dist/
 build/
 
 # ─── Training artifacts ───
-checkpoints/
 src/experiments/checkpoints/
-src/experiments/plots/
-plots/
 
 # ─── Gradio cache ───
 .gradio/
