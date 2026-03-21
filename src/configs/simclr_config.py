@@ -8,7 +8,7 @@ class SIMCLR_CONFIG:
     # -----------------------------
     # Training Settings
     # -----------------------------
-    EPOCHS: int = 800                 # ⬆ longer training helps a lot
+    EPOCHS: int = 800                # ⬆ longer training helps a lot
     BATCH_SIZE: int = 256
     NUM_WORKERS: int = 8              # ⬆ faster data loading
     LEARNING_RATE: float = 0.3        # linear scaling: 0.3 * batch_size / 256

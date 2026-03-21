@@ -12,7 +12,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--simclr-epoch", type=int, default=800)
     parser.add_argument("--label-percents", type=int, nargs="+", default=[10, 25, 50, 75, 100])
-    parser.add_argument("--variants", type=str, nargs="+", default=["resnet18", "resnet18_pt"])
+    parser.add_argument("--variants", type=str, nargs="+", default=["resnet18_pt"])
     return parser
 
 
