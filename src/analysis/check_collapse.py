@@ -52,7 +52,7 @@ def analyse(checkpoint_path: Path, device: str, num_batches: int = 10):
         pretrained=False,
     )
     state = torch.load(checkpoint_path, map_location=device, weights_only=True)
-    model.load_state_dict(state)
+    model.load_state_dict(state, strict=False)
     model.to(device).eval()
     print(f"✔ Loaded checkpoint: {checkpoint_path}\n")
 

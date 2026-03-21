@@ -4,7 +4,7 @@ from src.models.simclr import SimCLR
 from src.losses.nt_xent import NTXentLoss
 from src.data_handling.datasets import STL10Dataset
 from src.configs.global_config import GLOBAL_CONFIG
-from src.utils.set_experiment import set_seed, log_environment
+from src.utils.reproducibility import set_seed, log_environment
 
 import torch
 from torch.utils.data import DataLoader, Subset

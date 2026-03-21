@@ -1,0 +1,2 @@
+/mnt/c/Users/User/PycharmProjects/representation-learning-label-efficienc/src/analysis/loss_dashboard.py:242: UserWarning: The parameters have been moved from the Blocks constructor to the launch() method in Gradio 6.0: theme. Please pass these parameters to launch() instead.
+  with gr.Blocks(

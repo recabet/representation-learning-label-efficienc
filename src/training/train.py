@@ -5,6 +5,7 @@ import time
 import os
 
 import torch
+from src.configs.global_config import GLOBAL_CONFIG
 
 # Cross-platform file locking
 if os.name == "nt":
@@ -42,22 +43,33 @@ def fit_one_epoch_simclr(model,
                          criterion,
                          optimizer,
                          data_loader,
-                         device):
+                         device,
+                         scaler=None):
 
     model.train()
     total_loss = 0
+    use_amp = scaler is not None
+
     for x in tqdm(data_loader, desc="Training batch"):
         x1, x2 = x
         x1, x2 = x1.to(device), x2.to(device)
 
-        h1, z1 = model(x1)
-        h2, z2 = model(x2)
-
-        loss = criterion(z1, z2)
+        with torch.amp.autocast("cuda", enabled=use_amp):
+            h1, z1 = model(x1)
+            h2, z2 = model(x2)
+            loss = criterion(z1, z2)
 
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
 
         total_loss += loss.item()
 
@@ -113,8 +125,13 @@ def fit_simclr(model,
 
     loss_csv = checkpoint_dir / "loss_log.csv"
 
+    # AMP scaler for mixed-precision training
+    use_amp = GLOBAL_CONFIG.USE_AMP and device == "cuda"
+    scaler = torch.amp.GradScaler("cuda") if use_amp else None
+
     for epoch in range(1, epochs + 1):
-        avg_loss = fit_one_epoch_simclr(model, criterion, optimizer, train_loader, device)
+        avg_loss = fit_one_epoch_simclr(model, criterion, optimizer,
+                                        train_loader, device, scaler=scaler)
 
         current_lr = optimizer.param_groups[0]['lr']
         print(f"[Epoch {epoch}/{epochs}] Loss: {avg_loss:.4f}  LR: {current_lr:.6f}")
@@ -135,13 +152,19 @@ def fit_cls(model,
             device,
             epochs: int = 100,
             lr: float = 1e-3,
-            checkpoint_dir: str = "checkpoints_cls",
-            scheduler=None):
+            checkpoint_dir: str | Path = "checkpoints_cls",
+            scheduler=None,
+            use_sgd: bool = False):
 
     model.to(device)
 
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    if use_sgd:
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=0)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0)
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)

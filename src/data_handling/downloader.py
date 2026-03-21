@@ -12,6 +12,10 @@ def download_stl10_from_kaggle():
     raw_dir = Path(GLOBAL_CONFIG.RAW_DATA_DIR)
     raw_dir.mkdir(parents=True, exist_ok=True)
 
+    if os.path.exists(raw_dir / "stl10_binary"):
+        print("Dataset already exists")
+        return()
+
     dataset = "pratt3000/stl10-binary-files"
 
     print("Downloading STL-10 binary files from Kaggle...")
